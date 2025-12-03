@@ -12,33 +12,48 @@ export default function Edit() {
     designation: "",
     salary: "",
     created_at: "",
-    updated_at: ""
   });
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
   const [emailError, setEmailError] = useState("");
 
-  // Email validation
- const validateEmail = (email) => {
-  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return regex.test(email);
-};
-
-
-  // Fetch employee data
+  // ✅ Redirect if no token
   useEffect(() => {
-    fetch(`/api/employees/${id}`)
-      .then((res) => res.json())
-      .then((data) => setForm(data))
-      .catch(() => {
-        setMessage("Error fetching employee data.");
-        setError(true);
-      });
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+    } else {
+      // Fetch employee data with token
+      fetch(`http://localhost:5000/employees/${id}`, {
+        headers: { "Authorization": `Bearer ${token}` },
+      })
+        .then(async (res) => {
+          if (res.status === 401) {
+            setMessage("Session expired. Please login again.");
+            setError(true);
+            router.push("/login");
+            return;
+          }
+          return res.json();
+        })
+        .then((data) => {
+          if (data) setForm(data);
+        })
+        .catch(() => {
+          setMessage("Error fetching employee data.");
+          setError(true);
+        });
+    }
   }, [id]);
 
-  // Email change handler
-  const handleEmailChange = (value) => {
+  // Email validation
+  const validateEmail = (email: string) => {
+    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return regex.test(email);
+  };
+
+  const handleEmailChange = (value: string) => {
     setForm({ ...form, email: value });
 
     if (!validateEmail(value)) {
@@ -48,8 +63,7 @@ export default function Edit() {
     }
   };
 
-  // Submit handler
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateEmail(form.email)) {
@@ -58,17 +72,29 @@ export default function Edit() {
     }
 
     try {
-      const res = await fetch(`/api/employees/${id}`, {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Unauthorized");
+
+      const res = await fetch(`http://localhost:5000/employees/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`, // Send JWT
+        },
         body: JSON.stringify(form),
       });
+
+      if (res.status === 401) {
+        setMessage("Session expired. Please login again.");
+        setError(true);
+        router.push("/login");
+        return;
+      }
 
       if (!res.ok) throw new Error();
 
       setMessage("Employee updated successfully!");
       setError(false);
-
       setTimeout(() => router.push("/"), 2000);
     } catch {
       setMessage("Error updating employee. Please try again.");
@@ -112,7 +138,6 @@ export default function Edit() {
           Edit Employee
         </h1>
 
-        {/* Success/Error Message */}
         {message && (
           <p
             style={{
@@ -125,7 +150,6 @@ export default function Edit() {
           </p>
         )}
 
-        {/* NAME */}
         <input
           type="text"
           value={form.name}
@@ -135,7 +159,6 @@ export default function Edit() {
           required
         />
 
-        {/* EMAIL */}
         <input
           type="text"
           value={form.email}
@@ -151,15 +174,12 @@ export default function Edit() {
           }}
           required
         />
-
-        {/* Email Error Text */}
         {emailError && (
           <p style={{ color: "red", fontSize: "14px", marginTop: "-15px" }}>
             {emailError}
           </p>
         )}
 
-        {/* DESIGNATION */}
         <input
           type="text"
           value={form.designation}
@@ -169,7 +189,6 @@ export default function Edit() {
           required
         />
 
-        {/* SALARY */}
         <input
           type="number"
           value={form.salary}
@@ -179,16 +198,11 @@ export default function Edit() {
           required
         />
 
-        {/* CREATED DATE */}
         <p style={dateStyle}>
           <b>Created At:</b>{" "}
-          {form.created_at
-            ? new Date(form.created_at).toLocaleString()
-            : "N/A"}
+          {form.created_at ? new Date(form.created_at).toLocaleString() : "N/A"}
         </p>
 
-
-        {/* SUBMIT BUTTON */}
         <button
           type="submit"
           disabled={emailError !== ""}

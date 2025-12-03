@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function Create() {
@@ -13,16 +14,23 @@ export default function Create() {
   const [error, setError] = useState(false); // For error styling
   const router = useRouter();
 
+  // ✅ Redirect to login if no token
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+    }
+  }, []);
+
   // Email validation function
-  const validateEmail = (email) => {
+  const validateEmail = (email: string) => {
     const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return regex.test(email);
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Check email before submitting
     if (!validateEmail(form.email)) {
       setMessage("Please enter a valid email address.");
       setError(true);
@@ -30,30 +38,39 @@ export default function Create() {
     }
 
     try {
-      const res = await fetch("/api/employees", {
+      const token = localStorage.getItem("token"); // Add token in Authorization header
+      if (!token) throw new Error("Unauthorized");
+
+      const res = await fetch("http://localhost:5000/employees", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` // Send JWT token
+        },
         body: JSON.stringify(form)
       });
 
       if (!res.ok) {
+        if (res.status === 401) {
+          setMessage("Session expired. Please login again.");
+          setError(true);
+          router.push("/login");
+          return;
+        }
         throw new Error("Failed to add employee");
       }
 
       setMessage("Employee added successfully!");
       setError(false);
-
-      // Optionally, clear form
       setForm({ name: "", email: "", designation: "", salary: "" });
 
-      // Redirect after 2 seconds
       setTimeout(() => {
         router.push("/");
       }, 2000);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setMessage("Error adding employee. Please try again.");
+      setMessage(err.message || "Error adding employee. Please try again.");
       setError(true);
     }
   };
@@ -94,7 +111,6 @@ export default function Create() {
           Add Employee
         </h1>
 
-        {/* Success/Error message */}
         {message && (
           <div
             style={{
@@ -113,76 +129,39 @@ export default function Create() {
           placeholder="Name"
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
-          style={{
-            padding: "12px 15px",
-            color: "#000000",
-            borderRadius: "8px",
-            border: "1px solid #ccc",
-            fontSize: "16px",
-          }}
+          style={inputStyle}
           required
         />
-
         <input
-          type="text" // Changed from type="email" to type="text" to allow custom validation
+          type="text"
           placeholder="Email"
           value={form.email}
           onChange={(e) => setForm({ ...form, email: e.target.value })}
-          style={{
-            padding: "12px 15px",
-            color: "#000000",
-            borderRadius: "8px",
-            border: "1px solid #ccc",
-            fontSize: "16px",
-          }}
+          style={inputStyle}
           required
         />
-
         <input
           type="text"
           placeholder="Designation"
           value={form.designation}
           onChange={(e) => setForm({ ...form, designation: e.target.value })}
-          style={{
-            padding: "12px 15px",
-            borderRadius: "8px",
-            color: "#000000",
-            border: "1px solid #ccc",
-            fontSize: "16px",
-          }}
+          style={inputStyle}
           required
         />
-
         <input
           type="number"
           placeholder="Salary"
           value={form.salary}
           onChange={(e) => setForm({ ...form, salary: e.target.value })}
-          style={{
-            padding: "12px 15px",
-            borderRadius: "8px",
-            color: "#000000",
-            border: "1px solid #ccc",
-            fontSize: "16px",
-          }}
+          style={inputStyle}
           required
         />
 
         <button
           type="submit"
-          style={{
-            backgroundColor: "#4CAF50",
-            color: "#fff",
-            padding: "12px 20px",
-            border: "none",
-            borderRadius: "8px",
-            fontSize: "16px",
-            fontWeight: "bold",
-            cursor: "pointer",
-            transition: "background-color 0.3s ease",
-          }}
-          onMouseOver={(e) => (e.target.style.backgroundColor = "#45a049")}
-          onMouseOut={(e) => (e.target.style.backgroundColor = "#4CAF50")}
+          style={buttonStyle}
+          onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#45a049")}
+          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#4CAF50")}
         >
           Submit
         </button>
@@ -190,3 +169,23 @@ export default function Create() {
     </div>
   );
 }
+
+const inputStyle = {
+  padding: "12px 15px",
+  color: "#000000",
+  borderRadius: "8px",
+  border: "1px solid #ccc",
+  fontSize: "16px",
+};
+
+const buttonStyle = {
+  backgroundColor: "#4CAF50",
+  color: "#fff",
+  padding: "12px 20px",
+  border: "none",
+  borderRadius: "8px",
+  fontSize: "16px",
+  fontWeight: "bold",
+  cursor: "pointer",
+  transition: "background-color 0.3s ease",
+};
