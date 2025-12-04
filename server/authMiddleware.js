@@ -3,14 +3,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const mysql = require("mysql2");
 
-const JWT_SECRET = process.env.JWT_SECRET;
-
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
+const JWT_SECRET = process.env.JWT_SECRET ;
 
 function authMiddleware(req, res, next) {
   const authHeader = req.headers["authorization"];
