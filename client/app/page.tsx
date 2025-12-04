@@ -17,75 +17,127 @@ export default function Home() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const router = useRouter();
 
+  // --------------------------
   // Logout function
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    router.push("/login");
-  };
+  // --------------------------
+const handleLogout = async () => {
+  try {
+    await fetch("http://localhost:5000/auth/logout", {
+      method: "POST",
+      credentials: "include", 
+    });
 
+    // Remove access token
+    localStorage.removeItem("accessToken");
+
+    router.push("/login");
+
+  } catch (err) {
+    console.error("Logout error:", err);
+  }
+};
+
+  // --------------------------
+  // Fetch helper with auto-refresh
+  // --------------------------
+  async function apiFetch(url: string, options: RequestInit = {}) {
+    let token = localStorage.getItem("accessToken");
+
+    // Attach access token
+    options.headers = {
+      ...options.headers,
+      Authorization: `Bearer ${token}`,
+    };
+    options.credentials = "include"; // for HttpOnly refresh cookie
+
+    let res = await fetch(url, options);
+
+    // If access token expired → refresh
+    if (res.status === 401) {
+      const refreshRes = await fetch("http://localhost:5000/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", // sends refresh token cookie
+       body: JSON.stringify({ refreshToken: document.cookie.replace("refreshToken=", "") }),
+
+      });
+
+      if (!refreshRes.ok) {
+        // refresh token invalid → logout
+        handleLogout();
+        return null;
+      }
+
+      const refreshData = await refreshRes.json();
+      localStorage.setItem("accessToken", refreshData.accessToken);
+
+      // Retry original request with new access token
+      options.headers = {
+        ...options.headers,
+        Authorization: `Bearer ${refreshData.accessToken}`,
+      };
+      res = await fetch(url, options);
+    }
+
+    return res;
+  }
+
+  // --------------------------
+  // Fetch employees on mount
+  // --------------------------
   useEffect(() => {
     const fetchEmployees = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        // alert("Session expired. Please login again.");
-        router.push("/login");
+      const res = await apiFetch("http://localhost:5000/employees");
+      if (!res) return;
+
+      if (!res.ok) {
+        alert("Failed to fetch employees");
         return;
       }
-      try {
-        const res = await fetch("/api/employees", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
 
-        if (res.status === 401) {
-          alert("Session expired. Please login again.");
-          handleLogout();
-          return;
-        }
-
-        if (!res.ok) throw new Error("Failed to fetch employees");
-
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setEmployees(data);
-        } else {
-          console.error("Invalid data format:", data);
-        }
-      } catch (err) {
-        console.error("Error fetching employees:", err);
-      }
+      const data = await res.json();
+      if (Array.isArray(data)) setEmployees(data);
     };
 
     fetchEmployees();
   }, []);
+  
+//   useEffect(() => {
+//   const interval = setInterval(async () => {
+//     const res = await fetch("http://localhost:5000/auth/refresh", {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       credentials: "include",
+//     });
+//     if (res.ok) {
+//       const data = await res.json();
+//       localStorage.setItem("accessToken", data.accessToken);
+//     } else {
+//       router.push("/login"); // logout if refresh token expired
+//     }
+//   }, 30 * 1000); // every 10 minutes
 
+//   return () => clearInterval(interval);
+// }, []);
+
+
+  // --------------------------
+  // Delete employee
+  // --------------------------
   const deleteEmployee = async (id: number) => {
     if (!confirm("Are you sure you want to delete this employee?")) return;
 
-    const token = localStorage.getItem("token");
-    if (!token) {
-      alert("Session expired. Please login again.");
-      router.push("/login");
+    const res = await apiFetch(`http://localhost:5000/employees/${id}`, {
+      method: "DELETE",
+    });
+
+    if (!res) return;
+    if (!res.ok) {
+      alert("Failed to delete employee");
       return;
     }
 
-    try {
-      const res = await fetch(`/api/employees/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (res.status === 401) {
-        alert("Session expired. Please login again.");
-        handleLogout();
-        return;
-      }
-
-      setEmployees(employees.filter(emp => emp.id !== id));
-    } catch (err) {
-      console.error("Error deleting employee:", err);
-    }
+    setEmployees(employees.filter(emp => emp.id !== id));
   };
 
   return (
