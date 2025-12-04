@@ -1,7 +1,7 @@
 # -----------------------------
 # Node modules
 # -----------------------------
-/node_modules           # if you have node_modules in root (rare)
+/node_modules           # root
 /client/node_modules    # frontend
 /server/node_modules    # backend
 
@@ -11,6 +11,12 @@
 .env
 /client/.env
 /server/.env
+
+# -----------------------------
+# Sensitive backend files
+# -----------------------------
+/server/jwt.js
+/server/addUser.js
 
 # -----------------------------
 # Next.js / frontend build

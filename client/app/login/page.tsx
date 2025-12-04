@@ -10,35 +10,97 @@ export default function Login() {
 
   const router = useRouter();
 
-  // ❌ Removed: redirect to "/" if token exists
+  // Redirect to "/" if valid access token exists
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("accessToken");
     if (token) router.push("/");
   }, []);
+//     useEffect(() => {
+//   const interval = setInterval(async () => {
+//     const res = await fetch("http://localhost:5000/auth/refresh", {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       credentials: "include",
+//     });
+//     if (res.ok) {
+//       const data = await res.json();
+//       localStorage.setItem("accessToken", data.accessToken);
+//     } else {
+//       router.push("/login"); // logout if refresh token expired
+//     }
+//   }, 30 * 1000); // every 10 minutes
 
- const handleLogin = async () => {
-  try {
-    const res = await fetch("http://localhost:5000/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
+//   return () => clearInterval(interval);
+// }, []);
 
-    const data = await res.json();
+  const handleLogin = async () => {
+    try {
+      const res = await fetch("http://localhost:5000/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", // important for HttpOnly cookie (refresh token)
+        body: JSON.stringify({ username, password }),
+      });
 
-    if (!res.ok) throw new Error(data.message || "Login failed");
+      const data = await res.json();
 
-    localStorage.setItem("token", data.token);
+      if (!res.ok) throw new Error(data.message || "Login failed");
 
-    // ✅ Redirect to home page after successful login
-    router.push("/");
+      // Save access token in localStorage
+      localStorage.setItem("accessToken", data.accessToken);
 
-  } catch (err: any) {
-    console.error("Login error:", err.message);
-    setError(err.message);
+      router.push("/");
+    } catch (err: any) {
+      console.error("Login error:", err.message);
+      setError(err.message);
+    }
+  };
+
+  // --------------------------
+  // API helper to automatically refresh access token
+  // --------------------------
+  async function apiFetch(url: string, options: RequestInit = {}) {
+    let token = localStorage.getItem("accessToken");
+
+    // Attach access token
+    options.headers = {
+      ...options.headers,
+      Authorization: `Bearer ${token}`,
+    };
+    options.credentials = "include";
+
+    let res = await fetch(url, options);
+
+    // If access token expired → refresh
+    if (res.status === 401) {
+      const refreshRes = await fetch("http://localhost:5000/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", // refresh token cookie sent automatically
+      // body: JSON.stringify({ refreshToken: document.cookie.replace("refreshToken=", "") }),
+
+      });
+
+      if (!refreshRes.ok) {
+        // refresh token invalid → logout
+        localStorage.removeItem("accessToken");
+        router.push("/login");
+        return;
+      }
+
+      const refreshData = await refreshRes.json();
+      localStorage.setItem("accessToken", refreshData.accessToken);
+
+      // Retry original request with new token
+      options.headers = {
+        ...options.headers,
+        Authorization: `Bearer ${refreshData.accessToken}`,
+      };
+      res = await fetch(url, options);
+    }
+
+    return res;
   }
-};
-
 
   return (
     <div

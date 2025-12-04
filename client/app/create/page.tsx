@@ -14,20 +14,89 @@ export default function Create() {
   const [error, setError] = useState(false); // For error styling
   const router = useRouter();
 
-  // ✅ Redirect to login if no token
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-    }
-  }, []);
-
-  // Email validation function
-  const validateEmail = (email: string) => {
-    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return regex.test(email);
+  // --------------------------
+  // Logout function
+  // --------------------------
+  const handleLogout = () => {
+    localStorage.removeItem("accessToken");
+    router.push("/login");
   };
 
+  // --------------------------
+  // Redirect if no access token
+  // --------------------------
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (!token) handleLogout();
+  }, []);
+//  useEffect(() => {
+//   const interval = setInterval(async () => {
+//     const res = await fetch("http://localhost:5000/auth/refresh", {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       credentials: "include",
+//     });
+//     if (res.ok) {
+//       const data = await res.json();
+//       localStorage.setItem("accessToken", data.accessToken);
+//     } else {
+//       router.push("/login"); // logout if refresh token expired
+//     }
+//   }, 30 * 1000); // every 10 minutes
+
+//   return () => clearInterval(interval);
+// }, []);
+  // --------------------------
+  // API helper with auto-refresh
+  // --------------------------
+  async function apiFetch(url: string, options: RequestInit = {}) {
+    let token = localStorage.getItem("accessToken");
+
+    options.headers = {
+      ...options.headers,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+    options.credentials = "include";
+
+    let res = await fetch(url, options);
+
+    if (res.status === 401) {
+      // Access token expired → refresh
+      const refreshRes = await fetch("http://localhost:5000/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        // body: JSON.stringify({ refreshToken: document.cookie.replace("refreshToken=", "") }),
+      });
+
+      if (!refreshRes.ok) {
+        handleLogout();
+        return null;
+      }
+
+      const refreshData = await refreshRes.json();
+      localStorage.setItem("accessToken", refreshData.accessToken);
+
+      // Retry original request with new access token
+      options.headers = {
+        ...options.headers,
+        Authorization: `Bearer ${refreshData.accessToken}`,
+      };
+      res = await fetch(url, options);
+    }
+
+    return res;
+  }
+
+  // --------------------------
+  // Email validation
+  // --------------------------
+  const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  // --------------------------
+  // Submit handler
+  // --------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -38,36 +107,19 @@ export default function Create() {
     }
 
     try {
-      const token = localStorage.getItem("token"); // Add token in Authorization header
-      if (!token) throw new Error("Unauthorized");
-
-      const res = await fetch("http://localhost:5000/employees", {
+      const res = await apiFetch("http://localhost:5000/employees", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}` // Send JWT token
-        },
-        body: JSON.stringify(form)
+        body: JSON.stringify(form),
       });
 
-      if (!res.ok) {
-        if (res.status === 401) {
-          setMessage("Session expired. Please login again.");
-          setError(true);
-          router.push("/login");
-          return;
-        }
-        throw new Error("Failed to add employee");
-      }
+      if (!res) return; // already handled in apiFetch
+      if (!res.ok) throw new Error("Failed to add employee");
 
       setMessage("Employee added successfully!");
       setError(false);
       setForm({ name: "", email: "", designation: "", salary: "" });
 
-      setTimeout(() => {
-        router.push("/");
-      }, 2000);
-
+      setTimeout(() => router.push("/"), 2000);
     } catch (err: any) {
       console.error(err);
       setMessage(err.message || "Error adding employee. Please try again.");
